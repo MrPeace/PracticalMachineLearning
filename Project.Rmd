@@ -1,0 +1,131 @@
+---
+title: "Practical Machine Learning"
+subtitle: "Project"
+author: 
+- "Submitted by: Pete Ostergren"
+- "----------------------------------------"
+date: "12/30/2019"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Introduction
+
+This project is an example of categorical prediction.  Given a data set with a cataegorical output variable (classe) and a large number (over 100) of input variables. Additionally given is a second data set with only input variables. A model must be created to be used on the second data set to predict the "classe" variable.
+
+# Load Library list
+```{r libs, warning=FALSE, message=FALSE}
+library(caret)
+library(corrplot)
+library(lattice)
+library(ggplot2)
+library(randomForest)
+library(rattle)
+library(RColorBrewer)
+library(rpart)
+library(rpart.plot)
+```
+# 1. Load data and perform data wrangling
+
+## Set the working directory and read in data files
+```{r load, cache=TRUE}
+setwd("C:/Coursera/PracticalMachineLearning")
+trainRaw = read.csv("./data/pml-training.csv")
+testRaw = read.csv("./data/pml-testing.csv")
+```
+## Remove Near Zero Variance variables
+```{r nzv, cache=TRUE}
+NZV <- nearZeroVar(trainRaw, saveMetrics = TRUE)
+head(NZV, 20)
+training01 <- trainRaw[, !NZV$nzv]
+testing01 <- testRaw[, !NZV$nzv]
+dim(training01)
+dim(testing01)
+rm(trainRaw)
+rm(testRaw)
+rm(NZV)
+```
+## Remove first five columns which are not needed
+```{r regex, cache=TRUE}
+regex <- grepl("^X|timestamp|user_name", names(training01))
+training <- training01[, !regex]
+testing <- testing01[, !regex]
+rm(regex)
+rm(training01)
+rm(testing01)
+dim(training)
+dim(testing)
+```
+## Remove NA columns
+```{r naremoval, cache=TRUE}
+cond <- (colSums(is.na(training)) == 0)
+training <- training[, cond]
+testing <- testing[, cond]
+rm(cond)
+```
+
+# Explore the variables
+```{r eda, cache=TRUE}
+corrplot(cor(training[, -length(names(training))])
+            , method = "color"
+            , type = "upper"
+            , tl.cex = 0.5
+            , tl.col = rgb(0,0,0)
+            )
+```
+
+# Partitioning of our data
+
+```{r cdp, cache=TRUE}
+set.seed(56789) # For reproducibile purpose
+inTrain <- createDataPartition(training$classe, p = 0.70, list = FALSE)
+validation <- training[-inTrain, ]
+training <- training[inTrain, ]
+rm(inTrain)
+```
+
+## MODELING
+# Decision Tree
+# Create
+```{r tree, cache=TRUE}
+modelTree <- rpart(classe ~ ., data = training, method = "class")
+fancyRpartPlot(modelTree)
+
+#Check
+predictTree <- predict(modelTree, validation, type = "class")
+confusionMatrix(validation$classe, predictTree)
+accuracy <- postResample(predictTree, validation$classe)
+ose <- 1 - as.numeric(confusionMatrix(validation$classe
+                                      , predictTree)$overall[1])
+rm(predictTree)
+rm(modelTree)
+```
+
+# Estimates for Decision Tree
+
+## Accuracy is `r round(accuracy[1]*100, digits=0)`% and Out-of-Sample Error is `r round(ose*100, digits=0)`%. 
+
+# Random Forests
+# Create
+```{r radomForest, cache=TRUE}
+modelRF <- train(classe ~ ., data = training, method = "rf", trControl = trainControl(method = "cv", 5))
+modelRF
+#Check
+predictRF <- predict(modelRF, validation)
+confusionMatrix(validation$classe, predictRF)
+accuracy <- postResample(predictRF, validation$classe)
+ose <- 1 - as.numeric(confusionMatrix(validation$classe, predictRF)$overall[1])
+```
+
+# Estimates for Random Forests
+
+## Accuracy is `r round(accuracy[1]*100, digits=1)`% and Out-of-Sample Error is `r round(ose*100, digits=1)`%. 
+
+### As expected Random Forests out perform simple Decision Trees.
+
+# Go Live, use top performing model to predict!
+ 
+```{r predict, cache=TRUE}
+predict(modelRF, testing)
+```
